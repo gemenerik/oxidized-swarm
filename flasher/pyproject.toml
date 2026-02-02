@@ -1,0 +1,10 @@
+[project]
+name = "oxidized-swarm-flasher"
+version = "0.1.0"
+description = "Firmware flashing utility for Crazyflie swarm (uses stable cflib)"
+requires-python = ">=3.10"
+dependencies = [
+    "cflib==0.1.31",
+    "colorama>=0.4.6",
+    "tqdm>=4.66.0",
+]

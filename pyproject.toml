@@ -1,0 +1,9 @@
+[project]
+name = "oxidized-swarm"
+version = "0.1.0"
+description = "Performance stress test for the Rust-based Crazyflie library"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "cflib @ git+https://github.com/bitcraze/crazyflie-lib-python.git@6acbbe5d25595e68a392d1e72c582f7a60cf0108",
+]

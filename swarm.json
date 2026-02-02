@@ -1,0 +1,38 @@
+{
+  "firmware_base": "crazyflie-firmware",
+  "build_jobs": 8,
+  "platforms": {
+    "cf2": {
+      "defconfig": "cf2_defconfig",
+      "config_fragments": ["lighthouse_8bs.conf"],
+      "make_flags": []
+    },
+    "cf21bl": {
+      "defconfig": "cf21bl_defconfig",
+      "config_fragments": ["lighthouse_8bs.conf"],
+      "make_flags": []
+    }
+  },
+  "drones": [
+    {
+      "id": 1,
+      "uri": "radio://0/60/2M/F00D2BEFED",
+      "platform": "cf21bl"
+    },
+    {
+      "id": 2,
+      "uri": "radio://0/60/2M/F00D2BEFEE",
+      "platform": "cf2"
+    },
+    {
+      "id": 3,
+      "uri": "radio://0/60/2M/F00D2BEFEF",
+      "platform": "cf2"
+    },
+    {
+      "id": 4,
+      "uri": "radio://0/60/2M/F00D2BEFEC",
+      "platform": "cf21bl"
+    }
+  ]
+}
