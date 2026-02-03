@@ -73,4 +73,6 @@ uv run main.py --no-cache
 
 ## Flashing firmware
 
+The `crazyflie-firmware/` submodule is checked out at release **2025.12.1**. We overwrite `configs/lighthouse_8bs.conf` during the build because our lab section uses base station IDs 5, 6, 7, and 8 instead of the defaults.
+
 See [flasher/README.md](flasher/README.md) for instructions on building and flashing firmware to the drones. The flasher uses the stable PyPI version of cflib since bootloader support is not yet available in the Rust variant.
