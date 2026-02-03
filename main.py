@@ -191,25 +191,13 @@ class SwarmController:
 
     async def arm_all(self) -> None:
         """Arm all drones (synchronized operation)."""
-        # First, update supervisor state and check all brushless drones can be armed
         await self.update_supervisor_state()
 
-        not_ready = []
-        for drone in self.drones:
-            if drone.config.platform != "cf21bl":
-                continue
-            if drone.is_locked():
-                not_ready.append(f"ID {drone.config.id:02d}: LOCKED (requires reboot)")
-            elif drone.is_tumbled():
-                not_ready.append(f"ID {drone.config.id:02d}: TUMBLED")
-            elif not drone.can_be_armed():
-                not_ready.append(f"ID {drone.config.id:02d}: Cannot be armed")
-
+        not_ready = [d for d in self.drones
+                     if d.config.platform == "cf21bl" and not d.can_be_armed()]
         if not_ready:
-            print("ERROR: Some drones are not ready to arm:")
-            for msg in not_ready:
-                print(f"  {msg}")
-            raise RuntimeError("Not all drones can be armed")
+            ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
+            raise RuntimeError(f"Cannot arm drones: {ids}")
 
         async def arm_one(drone: DroneState):
             if drone.config.platform != "cf21bl":
@@ -247,6 +235,42 @@ class SwarmController:
 
         await self.sync_step(f"Blinking LEDs ({times}x)", blink_one)
 
+    async def preflight_check(self, timeout: float = 5.0) -> None:
+        """Wait for all drones to report can_fly, or abort on timeout."""
+        deadline = time.perf_counter() + timeout
+
+        while True:
+            await self.update_supervisor_state()
+            not_ready = [d for d in self.drones if not d.can_fly()]
+            if not not_ready:
+                break
+            if time.perf_counter() >= deadline:
+                ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
+                raise RuntimeError(f"Preflight check failed, drones not ready: {ids}")
+
+        print("✓ Preflight check passed\n")
+
+    async def takeoff_all(self, height: float = 0.5, duration: float = 2.0) -> None:
+        """Take off all drones (synchronized operation)."""
+        async def takeoff_one(drone: DroneState):
+            hlc = drone.cf.high_level_commander()
+            await hlc.take_off(height, None, duration, None)
+            await asyncio.sleep(duration)
+            print(f"  ID {drone.config.id:02d}: Airborne at {height}m")
+
+        await self.sync_step("Taking off", takeoff_one)
+
+    async def land_all(self, height: float = 0.0, duration: float = 2.0) -> None:
+        """Land all drones (synchronized operation)."""
+        async def land_one(drone: DroneState):
+            hlc = drone.cf.high_level_commander()
+            await hlc.land(height, None, duration, None)
+            await asyncio.sleep(duration)
+            await hlc.stop(None)
+            print(f"  ID {drone.config.id:02d}: Landed")
+
+        await self.sync_step("Landing", land_one)
+
     async def run_mission(self) -> None:
         """Execute the main mission sequence."""
         print("="*60)
@@ -260,11 +284,16 @@ class SwarmController:
         # Mission steps
         await self.arm_all()
 
-        print("Waiting 3 seconds...")
-        await asyncio.sleep(3.0)
-        print()
+        try:
+            await asyncio.sleep(1.0)
 
-        await self.disarm_all()
+            await self.preflight_check()
+
+            await self.takeoff_all()
+
+            await self.land_all()
+        finally:
+            await self.disarm_all()
 
         # Blink to show mission complete
         await self.blink_all(times=2)
