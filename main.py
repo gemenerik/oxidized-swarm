@@ -112,6 +112,7 @@ class SwarmController:
         self.cache = cache
         self.context = LinkContext()
         self.drones: List[DroneState] = []
+        self._log_tasks: List[asyncio.Task] = []
 
     async def connect_all(self) -> None:
         """Connect to all drones concurrently."""
@@ -135,7 +136,7 @@ class SwarmController:
         print()
 
     async def setup_logging(self) -> None:
-        """Set up log blocks for all drones (call once after connect)."""
+        """Set up log blocks for all drones and start background drain tasks."""
         print("Setting up supervisor log blocks...")
         start = time.perf_counter()
 
@@ -147,25 +148,36 @@ class SwarmController:
 
         await asyncio.gather(*[setup_one(d) for d in self.drones])
 
+        # Start background tasks that continuously drain each stream
+        for drone in self.drones:
+            task = asyncio.create_task(self._drain_supervisor_log(drone))
+            self._log_tasks.append(task)
+
         elapsed = time.perf_counter() - start
         print(f"✓ Log blocks created in {elapsed:.3f}s\n")
 
+    async def _drain_supervisor_log(self, drone: DroneState) -> None:
+        """Continuously read from the log stream, keeping supervisor_state fresh."""
+        try:
+            while drone.supervisor_stream:
+                data = await drone.supervisor_stream.next()
+                drone.supervisor_state = data["data"]["supervisor.info"]
+        except Exception:
+            # Stream was stopped or drone disconnected
+            pass
+
     async def stop_logging(self) -> None:
-        """Stop all log blocks."""
+        """Cancel background drain tasks and stop all log blocks."""
+        for task in self._log_tasks:
+            task.cancel()
+        await asyncio.gather(*self._log_tasks, return_exceptions=True)
+        self._log_tasks.clear()
+
         async def stop_one(drone: DroneState):
             if drone.supervisor_stream:
                 await drone.supervisor_stream.stop()
 
         await asyncio.gather(*[stop_one(d) for d in self.drones])
-
-    async def update_supervisor_state(self) -> None:
-        """Fetch latest supervisor state from all drones."""
-        async def update_one(drone: DroneState):
-            if drone.supervisor_stream:
-                data = await drone.supervisor_stream.next()
-                drone.supervisor_state = data["data"]["supervisor.info"]
-
-        await asyncio.gather(*[update_one(d) for d in self.drones])
 
     async def disconnect_all(self) -> None:
         """Disconnect from all drones concurrently."""
@@ -191,8 +203,6 @@ class SwarmController:
 
     async def arm_all(self) -> None:
         """Arm all drones (synchronized operation)."""
-        await self.update_supervisor_state()
-
         not_ready = [d for d in self.drones
                      if d.config.platform == "cf21bl" and not d.can_be_armed()]
         if not_ready:
@@ -235,18 +245,12 @@ class SwarmController:
 
         await self.sync_step(f"Blinking LEDs ({times}x)", blink_one)
 
-    async def preflight_check(self, timeout: float = 5.0) -> None:
-        """Wait for all drones to report can_fly, or abort on timeout."""
-        deadline = time.perf_counter() + timeout
-
-        while True:
-            await self.update_supervisor_state()
-            not_ready = [d for d in self.drones if not d.can_fly()]
-            if not not_ready:
-                break
-            if time.perf_counter() >= deadline:
-                ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
-                raise RuntimeError(f"Preflight check failed, drones not ready: {ids}")
+    async def preflight_check(self) -> None:
+        """Check that all drones report can_fly."""
+        not_ready = [d for d in self.drones if not d.can_fly()]
+        if not_ready:
+            ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
+            raise RuntimeError(f"Preflight check failed, drones not ready: {ids}")
 
         print("✓ Preflight check passed\n")
 
