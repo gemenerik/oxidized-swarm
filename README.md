@@ -74,7 +74,3 @@ uv run main.py --no-cache
 ## Flashing firmware
 
 See [flasher/README.md](flasher/README.md) for instructions on building and flashing firmware to the drones. The flasher uses the stable PyPI version of cflib since bootloader support is not yet available in the Rust variant.
-
-## License
-
-Apache 2.0
