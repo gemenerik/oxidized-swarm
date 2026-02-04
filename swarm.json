@@ -12,7 +12,7 @@
     }
   },
   "trajectory_drones": {
-    "config_fragments": ["lighthouse_8bs.conf"],
+    "config_fragments": [],
     "drones": [
       {
         "id": 10,
