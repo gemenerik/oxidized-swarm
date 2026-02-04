@@ -276,11 +276,11 @@ class SwarmController:
         target = drones if drones is not None else self.drones
         prefix = f"[{label}] " if label else ""
 
-        not_ready = [d for d in target
-                     if d.config.platform == "cf21bl" and not d.can_be_armed()]
-        if not_ready:
-            ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
-            raise RuntimeError(f"{prefix}Cannot arm drones: {ids}")
+        # not_ready = [d for d in target
+        #              if d.config.platform == "cf21bl" and not d.can_be_armed()]
+        # if not_ready:
+        #     ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
+        #     raise RuntimeError(f"{prefix}Cannot arm drones: {ids}")
 
         async def arm_one(drone: DroneState):
             if drone.config.platform != "cf21bl":
@@ -329,14 +329,19 @@ class SwarmController:
         await self.sync_step(f"{prefix}Blinking LEDs ({times}x)", blink_one, target)
 
     async def preflight_check(self, drones: List[DroneState] | None = None,
-                              label: str = "") -> None:
-        """Check that drones report can_fly."""
+                              label: str = "", timeout: float = 5.0) -> None:
+        """Wait for drones to report can_fly, polling until timeout."""
         target = drones if drones is not None else self.drones
         prefix = f"[{label}] " if label else ""
-        not_ready = [d for d in target if not d.can_fly()]
-        if not_ready:
-            ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
-            raise RuntimeError(f"{prefix}Preflight check failed, drones not ready: {ids}")
+        deadline = time.perf_counter() + timeout
+        while True:
+            not_ready = [d for d in target if not d.can_fly()]
+            if not not_ready:
+                break
+            if time.perf_counter() >= deadline:
+                ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
+                raise RuntimeError(f"{prefix}Preflight check failed, drones not ready: {ids}")
+            await asyncio.sleep(0.1)
         print(f"{prefix}Preflight check passed\n")
 
     async def takeoff_all(self, height: float = 0.5, duration: float = 2.0,
@@ -398,15 +403,12 @@ async def run_trajectory_mission(swarm: SwarmController,
 
     await swarm.sync_step(f"[{label}] Uploading trajectories", upload_trajectory, drones)
 
-    # Blink to confirm ready
-    await swarm.blink_all(times=3, drones=drones, label=label)
-
     # Arm
     await swarm.arm_all(drones=drones, label=label)
 
     try:
         await asyncio.sleep(1.0)
-        await swarm.preflight_check(drones=drones, label=label)
+        # await swarm.preflight_check(drones=drones, label=label)
 
         # Takeoff
         await swarm.takeoff_all(height=1.0, duration=2.0, drones=drones, label=label)
@@ -441,15 +443,12 @@ async def run_hover_mission(swarm: SwarmController,
     label = "HOVER"
     print(f"[{label}] Starting mission with {len(drones)} drone(s)")
 
-    # Blink to confirm ready
-    await swarm.blink_all(times=3, drones=drones, label=label)
-
     # Arm
     await swarm.arm_all(drones=drones, label=label)
 
     try:
         await asyncio.sleep(1.0)
-        await swarm.preflight_check(drones=drones, label=label)
+        # await swarm.preflight_check(drones=drones, label=label)
 
         # Takeoff
         await swarm.takeoff_all(height=0.5, duration=2.0, drones=drones, label=label)

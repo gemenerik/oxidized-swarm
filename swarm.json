@@ -16,47 +16,42 @@
     "drones": [
       {
         "id": 1,
-        "uri": "radio://1/20/2M/DEADBEEF01",
+        "uri": "radio://0/20/2M/DEADBEEF01",
         "platform": "cf21bl"
       },
       {
         "id": 2,
-        "uri": "radio://1/20/2M/DEADBEEF02",
+        "uri": "radio://0/20/2M/DEADBEEF02",
         "platform": "cf21bl"
       },
       {
         "id": 3,
-        "uri": "radio://1/20/2M/DEADBEEF03",
+        "uri": "radio://0/20/2M/DEADBEEF03",
         "platform": "cf21bl"
       },
       {
         "id": 4,
-        "uri": "radio://1/20/2M/DEADBEEF04",
+        "uri": "radio://0/20/2M/DEADBEEF04",
         "platform": "cf21bl"
       },
       {
         "id": 5,
-        "uri": "radio://1/20/2M/DEADBEEF05",
+        "uri": "radio://0/20/2M/DEADBEEF05",
         "platform": "cf21bl"
       },
       {
         "id": 6,
-        "uri": "radio://1/20/2M/DEADBEEF06",
-        "platform": "cf21bl"
-      },
-      {
-        "id": 7,
-        "uri": "radio://1/20/2M/DEADBEEF07",
+        "uri": "radio://0/20/2M/DEADBEEF06",
         "platform": "cf21bl"
       },
       {
         "id": 8,
-        "uri": "radio://1/20/2M/DEADBEEF08",
+        "uri": "radio://0/20/2M/DEADBEEF08",
         "platform": "cf21bl"
       },
       {
         "id": 9,
-        "uri": "radio://1/20/2M/DEADBEEF09",
+        "uri": "radio://0/20/2M/DEADBEEF09",
         "platform": "cf21bl"
       }
     ]
@@ -116,47 +111,47 @@
     "drones": [
       {
         "id": 19,
-        "uri": "radio://2/50/2M/E7E7E71701",
+        "uri": "radio://0/50/2M/E7E7E71701",
         "platform": "cf2"
       },
       {
         "id": 20,
-        "uri": "radio://2/50/2M/E7E7E71702",
+        "uri": "radio://0/50/2M/E7E7E71702",
         "platform": "cf2"
       },
       {
         "id": 21,
-        "uri": "radio://2/50/2M/E7E7E71703",
+        "uri": "radio://0/50/2M/E7E7E71703",
         "platform": "cf2"
       },
       {
         "id": 22,
-        "uri": "radio://2/50/2M/E7E7E71704",
+        "uri": "radio://0/50/2M/E7E7E71704",
         "platform": "cf2"
       },
       {
         "id": 23,
-        "uri": "radio://2/50/2M/E7E7E71705",
+        "uri": "radio://0/50/2M/E7E7E71705",
         "platform": "cf2"
       },
       {
         "id": 24,
-        "uri": "radio://2/50/2M/E7E7E71706",
+        "uri": "radio://0/50/2M/E7E7E71706",
         "platform": "cf2"
       },
       {
         "id": 25,
-        "uri": "radio://2/50/2M/E7E7E71707",
+        "uri": "radio://0/50/2M/E7E7E71707",
         "platform": "cf2"
       },
       {
         "id": 26,
-        "uri": "radio://2/50/2M/E7E7E71708",
+        "uri": "radio://0/50/2M/E7E7E71708",
         "platform": "cf2"
       },
       {
         "id": 27,
-        "uri": "radio://2/50/2M/E7E7E71709",
+        "uri": "radio://0/50/2M/E7E7E71709",
         "platform": "cf2"
       }
     ]
