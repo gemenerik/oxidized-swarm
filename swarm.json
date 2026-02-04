@@ -53,6 +53,11 @@
         "id": 8,
         "uri": "radio://1/20/2M/DEADBEEF08",
         "platform": "cf21bl"
+      },
+      {
+        "id": 9,
+        "uri": "radio://1/20/2M/DEADBEEF09",
+        "platform": "cf21bl"
       }
     ]
   },
@@ -60,47 +65,47 @@
     "config_fragments": ["lighthouse_8bs.conf"],
     "drones": [
       {
-        "id": 9,
+        "id": 10,
         "uri": "radio://0/90/2M/ABAD1DEA01",
         "platform": "cf21bl"
       },
       {
-        "id": 10,
+        "id": 11,
         "uri": "radio://0/90/2M/ABAD1DEA02",
         "platform": "cf21bl"
       },
       {
-        "id": 11,
+        "id": 12,
         "uri": "radio://0/90/2M/ABAD1DEA03",
         "platform": "cf21bl"
       },
       {
-        "id": 12,
+        "id": 13,
         "uri": "radio://0/90/2M/ABAD1DEA04",
         "platform": "cf21bl"
       },
       {
-        "id": 13,
+        "id": 14,
         "uri": "radio://0/90/2M/ABAD1DEA05",
         "platform": "cf21bl"
       },
       {
-        "id": 14,
+        "id": 15,
         "uri": "radio://0/90/2M/ABAD1DEA06",
         "platform": "cf21bl"
       },
       {
-        "id": 15,
+        "id": 16,
         "uri": "radio://0/90/2M/ABAD1DEA07",
         "platform": "cf21bl"
       },
       {
-        "id": 16,
+        "id": 17,
         "uri": "radio://0/90/2M/ABAD1DEA08",
         "platform": "cf21bl"
       },
       {
-        "id": 17,
+        "id": 18,
         "uri": "radio://0/90/2M/ABAD1DEA09",
         "platform": "cf21bl"
       }
@@ -110,48 +115,47 @@
     "config_fragments": [],
     "drones": [
       {
-        "id": 18,
+        "id": 19,
         "uri": "radio://2/50/2M/E7E7E71701",
         "platform": "cf2"
       },
       {
-        "id": 19,
+        "id": 20,
         "uri": "radio://2/50/2M/E7E7E71702",
         "platform": "cf2"
       },
       {
-        "id": 20,
+        "id": 21,
         "uri": "radio://2/50/2M/E7E7E71703",
         "platform": "cf2"
       },
       {
-        "id": 21,
+        "id": 22,
         "uri": "radio://2/50/2M/E7E7E71704",
         "platform": "cf2"
       },
       {
-        "id": 22,
+        "id": 23,
         "uri": "radio://2/50/2M/E7E7E71705",
         "platform": "cf2"
       },
       {
-        "id": 23,
+        "id": 24,
         "uri": "radio://2/50/2M/E7E7E71706",
         "platform": "cf2"
       },
       {
-        "id": 24,
-        "uri": "radio://2/50/2M/E7E7E71707",
-        "platform": "cf2"
-      },
-      
-      {
         "id": 25,
-        "uri": "radio://2/50/2M/E7E7E71708",
+        "uri": "radio://2/50/2M/E7E7E71707",
         "platform": "cf2"
       },
       {
         "id": 26,
+        "uri": "radio://2/50/2M/E7E7E71708",
+        "platform": "cf2"
+      },
+      {
+        "id": 27,
         "uri": "radio://2/50/2M/E7E7E71709",
         "platform": "cf2"
       }
