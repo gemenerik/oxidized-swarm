@@ -230,17 +230,21 @@ class SwarmFlasher:
             raise RuntimeError(f"Failed to build firmware for {platform}")
 
         # Find the firmware binary
-        binary_name = f'{platform}.bin'
-        build_binary_path = firmware_dir / 'build' / binary_name
+        build_binary_path = firmware_dir / 'build' / f'{platform}.bin'
 
         # Verify the firmware binary exists
         if not build_binary_path.exists():
             raise RuntimeError(f"Firmware binary not found at {build_binary_path}")
 
         # Copy the binary to a dedicated output directory in the flasher folder
+        # Use a unique name so different fragment combos don't overwrite each other
+        if config_fragments:
+            suffix = '_' + '_'.join(Path(f).stem for f in config_fragments)
+        else:
+            suffix = ''
         output_dir = Path(__file__).parent / 'build'
         output_dir.mkdir(exist_ok=True)
-        output_binary_path = output_dir / binary_name
+        output_binary_path = output_dir / f'{platform}{suffix}.bin'
         shutil.copy2(build_binary_path, output_binary_path)
         print(f"{Fore.CYAN}  → Saved as {output_binary_path}")
 
@@ -259,6 +263,7 @@ class SwarmFlasher:
             True if successful, False otherwise
         """
         print(f"{Fore.YELLOW}Flashing {Fore.RED}ID {drone.id:02d}{Fore.YELLOW} ({drone.platform.upper()}) at {drone.uri}...")
+        print(f"{Fore.CYAN}  → Firmware: {firmware_path}")
 
         for attempt in range(retry_count + 1):
             if attempt > 0:
