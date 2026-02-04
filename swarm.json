@@ -4,60 +4,101 @@
   "platforms": {
     "cf2": {
       "defconfig": "cf2_defconfig",
-      "config_fragments": ["lighthouse_8bs.conf"],
       "make_flags": []
     },
     "cf21bl": {
       "defconfig": "cf21bl_defconfig",
-      "config_fragments": ["lighthouse_8bs.conf"],
       "make_flags": []
     }
   },
-  "drones": [
-    {
-      "id": 1,
-      "uri": "radio://0/90/2M/ABAD1DEA01",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 2,
-      "uri": "radio://0/90/2M/ABAD1DEA02",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 3,
-      "uri": "radio://0/90/2M/ABAD1DEA03",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 4,
-      "uri": "radio://0/90/2M/ABAD1DEA04",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 5,
-      "uri": "radio://0/90/2M/ABAD1DEA05",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 6,
-      "uri": "radio://0/90/2M/ABAD1DEA06",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 7,
-      "uri": "radio://0/90/2M/ABAD1DEA07",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 8,
-      "uri": "radio://0/90/2M/ABAD1DEA08",
-      "platform": "cf21bl"
-    },
-    {
-      "id": 9,
-      "uri": "radio://0/90/2M/ABAD1DEA09",
-      "platform": "cf21bl"
-    }
-  ]
+  "trajectory_drones": {
+    "config_fragments": ["lighthouse_8bs.conf"],
+    "drones": [
+      {
+        "id": 10,
+        "uri": "radio://0/80/2M/ABAD1DEA10",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 11,
+        "uri": "radio://0/80/2M/ABAD1DEA11",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 12,
+        "uri": "radio://0/80/2M/ABAD1DEA12",
+        "platform": "cf2"
+      }
+    ]
+  },
+  "hover_drones": {
+    "config_fragments": ["lighthouse_8bs.conf"],
+    "drones": [
+      {
+        "id": 1,
+        "uri": "radio://0/90/2M/ABAD1DEA01",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 2,
+        "uri": "radio://0/90/2M/ABAD1DEA02",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 3,
+        "uri": "radio://0/90/2M/ABAD1DEA03",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 4,
+        "uri": "radio://0/90/2M/ABAD1DEA04",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 5,
+        "uri": "radio://0/90/2M/ABAD1DEA05",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 6,
+        "uri": "radio://0/90/2M/ABAD1DEA06",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 7,
+        "uri": "radio://0/90/2M/ABAD1DEA07",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 8,
+        "uri": "radio://0/90/2M/ABAD1DEA08",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 9,
+        "uri": "radio://0/90/2M/ABAD1DEA09",
+        "platform": "cf21bl"
+      }
+    ]
+  },
+  "blink_drones": {
+    "config_fragments": [],
+    "drones": [
+      {
+        "id": 20,
+        "uri": "radio://2/70/2M/ABAD1DEA20",
+        "platform": "cf2"
+      },
+      {
+        "id": 21,
+        "uri": "radio://2/70/2M/ABAD1DEA21",
+        "platform": "cf21bl"
+      },
+      {
+        "id": 22,
+        "uri": "radio://2/70/2M/ABAD1DEA22",
+        "platform": "cf2"
+      }
+    ]
+  }
 }

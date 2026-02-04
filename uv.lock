@@ -5,7 +5,7 @@ requires-python = ">=3.13"
 [[package]]
 name = "cflib"
 version = "0.1.0"
-source = { git = "https://github.com/bitcraze/crazyflie-lib-python.git?rev=6acbbe5d25595e68a392d1e72c582f7a60cf0108#6acbbe5d25595e68a392d1e72c582f7a60cf0108" }
+source = { git = "https://github.com/bitcraze/crazyflie-lib-python.git?rev=d8ee90d2ea1c1a18118e61bf6e7d5468289e5b5b#d8ee90d2ea1c1a18118e61bf6e7d5468289e5b5b" }
 dependencies = [
     { name = "maturin", extra = ["patchelf"] },
     { name = "packaging" },
@@ -46,7 +46,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "cflib", git = "https://github.com/bitcraze/crazyflie-lib-python.git?rev=6acbbe5d25595e68a392d1e72c582f7a60cf0108" }]
+requires-dist = [{ name = "cflib", git = "https://github.com/bitcraze/crazyflie-lib-python.git?rev=d8ee90d2ea1c1a18118e61bf6e7d5468289e5b5b" }]
 
 [[package]]
 name = "packaging"

@@ -40,6 +40,7 @@ class DroneConfig:
     id: int
     uri: str
     platform: str
+    config_fragments: List[str]
 
 
 @dataclass
@@ -47,7 +48,6 @@ class PlatformConfig:
     """Build configuration for a platform."""
     defconfig: str
     make_flags: List[str]
-    config_fragments: List[str]
 
 
 class SwarmFlasher:
@@ -76,7 +76,7 @@ class SwarmFlasher:
         self.build_jobs = self.config.get('build_jobs', 8)
         self.platforms = self._parse_platforms()
         self.drones = self._parse_drones()
-        self.built_firmware = {}  # Cache: platform -> firmware_path
+        self.built_firmware = {}  # Cache: (platform, fragments_tuple) -> firmware_path
 
     def _load_config(self) -> dict:
         """Load the JSON configuration file."""
@@ -97,19 +97,22 @@ class SwarmFlasher:
             platforms[name] = PlatformConfig(
                 defconfig=config['defconfig'],
                 make_flags=config.get('make_flags', []),
-                config_fragments=config.get('config_fragments', [])
             )
         return platforms
 
     def _parse_drones(self) -> List[DroneConfig]:
-        """Parse drone configurations."""
+        """Parse drone configurations from subswarm groups."""
         drones = []
-        for drone in self.config.get('drones', []):
-            drones.append(DroneConfig(
-                id=drone['id'],
-                uri=drone['uri'],
-                platform=drone['platform']
-            ))
+        for group_key in ('trajectory_drones', 'hover_drones', 'blink_drones'):
+            group = self.config.get(group_key, {})
+            fragments = group.get('config_fragments', [])
+            for drone in group.get('drones', []):
+                drones.append(DroneConfig(
+                    id=drone['id'],
+                    uri=drone['uri'],
+                    platform=drone['platform'],
+                    config_fragments=fragments,
+                ))
         return sorted(drones, key=lambda d: d.id)
 
     def get_drones(self, ids: Optional[List[int]] = None,
@@ -139,11 +142,13 @@ class SwarmFlasher:
 
         return selected
 
-    def build_firmware(self, platform: str, extra_flags: Optional[List[str]] = None) -> str:
-        """Build firmware for a specific platform.
+    def build_firmware(self, platform: str, config_fragments: List[str],
+                       extra_flags: Optional[List[str]] = None) -> str:
+        """Build firmware for a specific platform + config fragment combination.
 
         Args:
             platform: Platform identifier (cf2, cf21, cf21bl)
+            config_fragments: Config fragment files to merge with defconfig
             extra_flags: Additional make flags
 
         Returns:
@@ -152,9 +157,10 @@ class SwarmFlasher:
         Raises:
             RuntimeError: If build fails
         """
-        if platform in self.built_firmware:
-            print(f"{Fore.GREEN}Using cached firmware for {platform}")
-            return self.built_firmware[platform]
+        cache_key = (platform, tuple(config_fragments))
+        if cache_key in self.built_firmware:
+            print(f"{Fore.GREEN}Using cached firmware for {platform} [{', '.join(config_fragments) or 'no fragments'}]")
+            return self.built_firmware[cache_key]
 
         print(f"{Fore.YELLOW}Building firmware for {Fore.RED}{platform.upper()}{Fore.YELLOW}...")
 
@@ -162,7 +168,6 @@ class SwarmFlasher:
         firmware_dir = self.firmware_base
 
         # Step 1: Configure using defconfig + config fragments
-        config_fragments = platform_config.config_fragments
         defconfig_path = firmware_dir / 'configs' / platform_config.defconfig
 
         if config_fragments:
@@ -239,7 +244,7 @@ class SwarmFlasher:
         shutil.copy2(build_binary_path, output_binary_path)
         print(f"{Fore.CYAN}  → Saved as {output_binary_path}")
 
-        self.built_firmware[platform] = str(output_binary_path)
+        self.built_firmware[cache_key] = str(output_binary_path)
         return str(output_binary_path)
 
     def flash_drone(self, drone: DroneConfig, firmware_path: str, retry_count: int = 2) -> bool:
@@ -333,15 +338,17 @@ class SwarmFlasher:
         print(f"{Fore.CYAN}Flashing {len(drones)} drone(s)")
         print(f"{Fore.CYAN}{'='*60}\n")
 
-        # Identify unique platforms to build
-        platforms_to_build = set(d.platform for d in drones)
+        # Identify unique (platform, config_fragments) combos to build
+        variants_to_build = set(
+            (d.platform, tuple(d.config_fragments)) for d in drones
+        )
 
-        print(f"{Fore.YELLOW}Building {len(platforms_to_build)} firmware variant(s)...\n")
+        print(f"{Fore.YELLOW}Building {len(variants_to_build)} firmware variant(s)...\n")
 
         # Build all required firmware variants
-        for platform in platforms_to_build:
+        for platform, fragments in variants_to_build:
             try:
-                self.build_firmware(platform, extra_flags)
+                self.build_firmware(platform, list(fragments), extra_flags)
                 print()
             except RuntimeError as e:
                 print(f"{Fore.RED}Build failed: {e}")
@@ -353,7 +360,8 @@ class SwarmFlasher:
         failed = 0
 
         for drone in drones:
-            firmware_path = self.built_firmware[drone.platform]
+            cache_key = (drone.platform, tuple(drone.config_fragments))
+            firmware_path = self.built_firmware[cache_key]
             if self.flash_drone(drone, firmware_path):
                 successful += 1
             else:

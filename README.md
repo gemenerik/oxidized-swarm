@@ -1,11 +1,11 @@
 # oxidized-swarm
 
-Performance stress test for the Rust-based [cflib](https://github.com/bitcraze/crazyflie-lib-python) rewrite. Pushes the Python bindings to their limits by running synchronized multi-drone operations over a single Crazyradio link, testing the power and reliability of the Rust library under real flight conditions.
+Performance stress test for the Rust-based [cflib](https://github.com/bitcraze/crazyflie-lib-python) rewrite. Pushes the Python bindings to their limits by running synchronized multi-drone operations across multiple Crazyradios, testing the power and reliability of the Rust library under real flight conditions.
 
 ## Repository contents
 
-- `main.py` — Swarm controller that connects, arms, flies, and lands all drones concurrently
-- `swarm.json` — Drone definitions (IDs, radio URIs, platform types)
+- `main.py` — Swarm controller that runs three concurrent subswarm missions (trajectory, hover, blink)
+- `swarm.json` — Drone definitions grouped by subswarm, with per-group firmware config fragments
 - `crazyflie-firmware/` — Bitcraze firmware submodule, fixed at release **2025.12.1**
 - `flasher/` — Firmware build & flash utility (see [flasher/README.md](flasher/README.md))
 
@@ -19,15 +19,44 @@ uv sync
 
 ## Configuration
 
-Drones are defined in `swarm.json`. Each entry specifies an ID, radio URI, and platform type (`cf2`, `cf21bl`, etc.):
+Drones are defined in `swarm.json`, organized into three subswarm groups. Each group has its own `config_fragments` (used by the flasher for firmware builds) and a list of drones:
 
 ```json
 {
-  "id": 1,
-  "uri": "radio://0/90/2M/ABAD1DEA01",
-  "platform": "cf21bl"
+  "trajectory_drones": {
+    "config_fragments": ["lighthouse_8bs.conf"],
+    "drones": [
+      { "id": 10, "uri": "radio://0/80/2M/ABAD1DEA10", "platform": "cf21bl" }
+    ]
+  },
+  "hover_drones": {
+    "config_fragments": ["lighthouse_8bs.conf"],
+    "drones": [
+      { "id": 1, "uri": "radio://0/90/2M/ABAD1DEA01", "platform": "cf21bl" }
+    ]
+  },
+  "blink_drones": {
+    "config_fragments": [],
+    "drones": [
+      { "id": 20, "uri": "radio://2/70/2M/ABAD1DEA20", "platform": "cf2" }
+    ]
+  }
 }
 ```
+
+Platform build configs (`defconfig`, `make_flags`) live under the top-level `platforms` key. Any subswarm group can contain a mix of platforms.
+
+## Subswarm missions
+
+All drones connect first, then the three missions launch concurrently:
+
+**Trajectory** — Uploads a figure-8 polynomial trajectory (Poly4D) to drone memory, then flies it using the high-level commander. Sequence: blink 3x → arm → preflight → takeoff to 1.0 m → fly trajectory → land → disarm → blink 2x.
+
+**Hover** — Takes off, holds position for a fixed duration, and lands. Sequence: blink 3x → arm → preflight → takeoff to 0.5 m → hover 15 s → land → disarm → blink 2x.
+
+**Blink** — LED-only patterns for drones without motors. Runs several blink patterns with varying timing (rapid, slow pulse, fast strobe, confirmation).
+
+Drones are always disarmed on exit, even if a mission fails. If one subswarm mission fails, the others continue independently.
 
 ## Usage
 
@@ -36,18 +65,6 @@ Drones are defined in `swarm.json`. Each entry specifies an ID, radio URI, and p
 ```bash
 uv run main.py
 ```
-
-This connects to all drones defined in `swarm.json`, then runs the following mission sequence:
-
-1. Blink LEDs 3 times to confirm connection
-2. Arm all brushless drones
-3. Run a preflight check (waits up to 5 s for all drones to report ready)
-4. Take off to 0.5 m
-5. Land
-6. Disarm all drones
-7. Blink LEDs 2 times to confirm completion
-
-Drones are always disarmed on exit, even if the mission fails.
 
 ### Options
 
@@ -59,7 +76,7 @@ Drones are always disarmed on exit, even if the mission fails.
 
 ### Examples
 
-Run with a subset of drones:
+Run with a subset of drones (filters across all subswarm groups):
 
 ```bash
 uv run main.py --ids 1 2 3
