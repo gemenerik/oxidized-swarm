@@ -560,10 +560,27 @@ async def main() -> None:
         metavar="ID",
         help="Only use specific drone IDs (e.g., --ids 1 2 3)"
     )
+    parser.add_argument(
+        "--subswarm",
+        nargs="+",
+        choices=["trajectory", "hover", "blink"],
+        metavar="NAME",
+        help="Only run specific subswarms (e.g., --subswarm blink hover)"
+    )
     args = parser.parse_args()
 
     # Load configuration
     swarm_config = load_swarm_config(args.config)
+
+    # Filter by --subswarm if specified
+    if args.subswarm:
+        active = set(args.subswarm)
+        if "trajectory" not in active:
+            swarm_config.trajectory.drones = []
+        if "hover" not in active:
+            swarm_config.hover.drones = []
+        if "blink" not in active:
+            swarm_config.blink.drones = []
 
     # Filter by --ids if specified
     if args.ids:
