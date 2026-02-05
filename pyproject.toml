@@ -5,5 +5,5 @@ description = "Performance stress test for the Rust-based Crazyflie library"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "cflib @ git+https://github.com/bitcraze/crazyflie-lib-python.git@d8ee90d2ea1c1a18118e61bf6e7d5468289e5b5b",
+    "cflib @ git+https://github.com/bitcraze/crazyflie-lib-python.git@e3ea96c26a7d1a433f689f4a93c357901c5e5286",
 ]
