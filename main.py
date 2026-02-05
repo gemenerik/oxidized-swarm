@@ -1,392 +1,148 @@
 #!/usr/bin/env python3
 """
-Oxidized Swarm - Multi-drone control stress test.
+Minimal 2-drone trajectory demo.
 
-Demonstrates the performance of the Rust-based Crazyflie library by controlling
-multiple drones through a single Crazyradio.
-
-Architecture:
-- Supports synchronized operations (all drones complete before proceeding)
-- Supports async batches (multiple operations in parallel, then sync)
-- Easy to extend with additional mission steps
+Flies two Crazyflies on a single Crazyradio through a figure-8 trajectory.
+All operations run concurrently on both drones using asyncio.gather.
 """
 
-import argparse
 import asyncio
-import json
-import sys
-import time
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Any
 
-from cflib import Crazyflie, LinkContext, FileTocCache, NoTocCache
-
-
-# Supervisor state bit positions
-# Bit 0 = Can be armed - the system can be armed and will accept an arming command
-# Bit 1 = Is armed - the system is armed
-# Bit 2 = Is auto armed - the system is configured to automatically arm
-# Bit 3 = Can fly - the Crazyflie is ready to fly
-# Bit 4 = Is flying - the Crazyflie is flying
-# Bit 5 = Is tumbled - the Crazyflie is upside down
-# Bit 6 = Is locked - the Crazyflie is in the locked state and must be restarted
-# Bit 7 = Is crashed - the Crazyflie has crashed
-# Bit 8 = High level control is actively flying the drone
-# Bit 9 = High level trajectory has finished
-# Bit 10 = High level control is disabled and not producing setpoints
-BIT_CAN_BE_ARMED = 0
-BIT_IS_ARMED = 1
-BIT_IS_AUTO_ARMED = 2
-BIT_CAN_FLY = 3
-BIT_IS_FLYING = 4
-BIT_IS_TUMBLED = 5
-BIT_IS_LOCKED = 6
-BIT_IS_CRASHED = 7
-BIT_HL_CONTROL_ACTIVE = 8
-BIT_HL_TRAJ_FINISHED = 9
-BIT_HL_CONTROL_DISABLED = 10
-
-# Log block interval in ms
-SUPERVISOR_LOG_INTERVAL = 100
-
-
-@dataclass
-class DroneConfig:
-    """Configuration for a single drone."""
-    id: int
-    uri: str
-    platform: str
-
-
-@dataclass
-class DroneState:
-    """Runtime state for a connected drone."""
-    cf: Crazyflie
-    config: DroneConfig
-    supervisor_stream: Any = None
-    supervisor_state: int = 0
-
-    def _bit(self, position: int) -> bool:
-        return bool((self.supervisor_state >> position) & 1)
-
-    def can_be_armed(self) -> bool:
-        return self._bit(BIT_CAN_BE_ARMED)
-
-    def is_armed(self) -> bool:
-        return self._bit(BIT_IS_ARMED)
-
-    def is_auto_armed(self) -> bool:
-        return self._bit(BIT_IS_AUTO_ARMED)
-
-    def can_fly(self) -> bool:
-        return self._bit(BIT_CAN_FLY)
-
-    def is_flying(self) -> bool:
-        return self._bit(BIT_IS_FLYING)
-
-    def is_tumbled(self) -> bool:
-        return self._bit(BIT_IS_TUMBLED)
-
-    def is_locked(self) -> bool:
-        return self._bit(BIT_IS_LOCKED)
-
-    def is_crashed(self) -> bool:
-        return self._bit(BIT_IS_CRASHED)
-
-    def hl_control_active(self) -> bool:
-        return self._bit(BIT_HL_CONTROL_ACTIVE)
-
-    def hl_traj_finished(self) -> bool:
-        return self._bit(BIT_HL_TRAJ_FINISHED)
-
-    def hl_control_disabled(self) -> bool:
-        return self._bit(BIT_HL_CONTROL_DISABLED)
-
-
-class SwarmController:
-    """Manages a swarm of Crazyflies with synchronized operations."""
-
-    def __init__(self, drones: List[DroneConfig], cache):
-        self.drone_configs = drones
-        self.cache = cache
-        self.context = LinkContext()
-        self.drones: List[DroneState] = []
-        self._log_tasks: List[asyncio.Task] = []
-
-    async def connect_all(self) -> None:
-        """Connect to all drones concurrently."""
-        print(f"Connecting to {len(self.drone_configs)} drones...")
-        start = time.perf_counter()
-
-        async def connect_one(config: DroneConfig) -> tuple[DroneState, float]:
-            cf_start = time.perf_counter()
-            cf = await Crazyflie.connect_from_uri(self.context, config.uri, self.cache)
-            elapsed = time.perf_counter() - cf_start
-            return DroneState(cf=cf, config=config), elapsed
-
-        results = await asyncio.gather(*[connect_one(d) for d in self.drone_configs])
-        self.drones = [state for state, _ in results]
-        connect_times = [t for _, t in results]
-        total_time = time.perf_counter() - start
-
-        print(f"✓ All connected in {total_time:.3f}s")
-        for drone, t in zip(self.drones, connect_times):
-            print(f"  ID {drone.config.id:02d}: {t:.3f}s")
-        print()
-
-    async def setup_logging(self) -> None:
-        """Set up log blocks for all drones and start background drain tasks."""
-        print("Setting up supervisor log blocks...")
-        start = time.perf_counter()
-
-        async def setup_one(drone: DroneState):
-            log = drone.cf.log()
-            block = await log.create_block()
-            await block.add_variable("supervisor.info")
-            drone.supervisor_stream = await block.start(SUPERVISOR_LOG_INTERVAL)
-
-        await asyncio.gather(*[setup_one(d) for d in self.drones])
-
-        # Start background tasks that continuously drain each stream
-        for drone in self.drones:
-            task = asyncio.create_task(self._drain_supervisor_log(drone))
-            self._log_tasks.append(task)
-
-        elapsed = time.perf_counter() - start
-        print(f"✓ Log blocks created in {elapsed:.3f}s\n")
-
-    async def _drain_supervisor_log(self, drone: DroneState) -> None:
-        """Continuously read from the log stream, keeping supervisor_state fresh."""
-        try:
-            while drone.supervisor_stream:
-                data = await drone.supervisor_stream.next()
-                drone.supervisor_state = data["data"]["supervisor.info"]
-        except Exception:
-            # Stream was stopped or drone disconnected
-            pass
-
-    async def stop_logging(self) -> None:
-        """Cancel background drain tasks and stop all log blocks."""
-        for task in self._log_tasks:
-            task.cancel()
-        await asyncio.gather(*self._log_tasks, return_exceptions=True)
-        self._log_tasks.clear()
-
-        async def stop_one(drone: DroneState):
-            if drone.supervisor_stream:
-                await drone.supervisor_stream.stop()
-
-        await asyncio.gather(*[stop_one(d) for d in self.drones])
-
-    async def disconnect_all(self) -> None:
-        """Disconnect from all drones concurrently."""
-        print("Disconnecting from all drones...")
-        await self.stop_logging()
-        await asyncio.gather(*[d.cf.disconnect() for d in self.drones])
-        print("✓ All disconnected\n")
-
-    async def sync_step(self, step_name: str, operation) -> None:
-        """Execute an operation on all drones and wait for all to complete.
-
-        Args:
-            step_name: Description of the operation for logging
-            operation: Async function that takes DroneState and performs the operation
-        """
-        print(f"{step_name}...")
-        start = time.perf_counter()
-
-        await asyncio.gather(*[operation(drone) for drone in self.drones])
-
-        elapsed = time.perf_counter() - start
-        print(f"✓ {step_name} completed in {elapsed:.3f}s\n")
-
-    async def arm_all(self) -> None:
-        """Arm all drones (synchronized operation)."""
-        not_ready = [d for d in self.drones
-                     if d.config.platform == "cf21bl" and not d.can_be_armed()]
-        if not_ready:
-            ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
-            raise RuntimeError(f"Cannot arm drones: {ids}")
-
-        async def arm_one(drone: DroneState):
-            if drone.config.platform != "cf21bl":
-                print(f"  ID {drone.config.id:02d}: Skipped (not brushless)")
-                return
-            platform = drone.cf.platform()
-            await platform.send_arming_request(do_arm=True)
-            print(f"  ID {drone.config.id:02d}: Armed")
-
-        await self.sync_step("Arming all drones", arm_one)
-
-    async def disarm_all(self) -> None:
-        """Disarm all drones (synchronized operation)."""
-        async def disarm_one(drone: DroneState):
-            if drone.config.platform != "cf21bl":
-                print(f"  ID {drone.config.id:02d}: Skipped (not brushless)")
-                return
-            platform = drone.cf.platform()
-            await platform.send_arming_request(do_arm=False)
-            print(f"  ID {drone.config.id:02d}: Disarmed")
-
-        await self.sync_step("Disarming all drones", disarm_one)
-
-    async def blink_all(self, times: int = 3, on_time: float = 0.5, off_time: float = 0.5) -> None:
-        """Blink LEDs on all drones (synchronized operation)."""
-        async def blink_one(drone: DroneState):
-            param = drone.cf.param()
-            for i in range(times):
-                await param.set("led.bitmask", 212)
-                await asyncio.sleep(on_time)
-                await param.set("led.bitmask", 0)
-                if i < times - 1:
-                    await asyncio.sleep(off_time)
-            print(f"  ID {drone.config.id:02d}: Blinked {times}x")
-
-        await self.sync_step(f"Blinking LEDs ({times}x)", blink_one)
-
-    async def preflight_check(self) -> None:
-        """Check that all drones report can_fly."""
-        not_ready = [d for d in self.drones if not d.can_fly()]
-        if not_ready:
-            ids = ", ".join(f"{d.config.id:02d}" for d in not_ready)
-            raise RuntimeError(f"Preflight check failed, drones not ready: {ids}")
-
-        print("✓ Preflight check passed\n")
-
-    async def takeoff_all(self, height: float = 0.5, duration: float = 2.0) -> None:
-        """Take off all drones (synchronized operation)."""
-        async def takeoff_one(drone: DroneState):
-            hlc = drone.cf.high_level_commander()
-            await hlc.take_off(height, None, duration, None)
-            await asyncio.sleep(duration)
-            print(f"  ID {drone.config.id:02d}: Airborne at {height}m")
-
-        await self.sync_step("Taking off", takeoff_one)
-
-    async def land_all(self, height: float = 0.0, duration: float = 2.0) -> None:
-        """Land all drones (synchronized operation)."""
-        async def land_one(drone: DroneState):
-            hlc = drone.cf.high_level_commander()
-            await hlc.land(height, None, duration, None)
-            await asyncio.sleep(duration)
-            await hlc.stop(None)
-            print(f"  ID {drone.config.id:02d}: Landed")
-
-        await self.sync_step("Landing", land_one)
-
-    async def run_mission(self) -> None:
-        """Execute the main mission sequence."""
-        print("="*60)
-        print("Starting mission")
-        print("="*60)
-        print()
-
-        # Blink to show we're connected
-        await self.blink_all(times=3)
-
-        # Mission steps
-        await self.arm_all()
-
-        try:
-            await asyncio.sleep(1.0)
-
-            await self.preflight_check()
-
-            await self.takeoff_all()
-
-            await self.land_all()
-        finally:
-            await self.disarm_all()
-
-        # Blink to show mission complete
-        await self.blink_all(times=2)
-
-        print("="*60)
-        print("Mission complete")
-        print("="*60)
-
-
-def load_swarm_config(config_file: str) -> List[DroneConfig]:
-    """Load drone configurations from swarm.json."""
-    try:
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-
-        drones = []
-        for drone in config.get('drones', []):
-            drones.append(DroneConfig(
-                id=drone['id'],
-                uri=drone['uri'],
-                platform=drone['platform']
-            ))
-        return sorted(drones, key=lambda d: d.id)
-
-    except FileNotFoundError:
-        print(f"Error: Configuration file not found: {config_file}")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error parsing JSON config: {e}")
-        sys.exit(1)
+from cflib import Crazyflie, FileTocCache, LinkContext
+from cflib.trajectory import Poly, Poly4D
+
+# --- Configuration -----------------------------------------------------------
+
+URIS = [
+    "radio://0/60/2M/F00D2BEFED",
+    "radio://0/60/2M/F00D2BEFEE",
+]
+
+TAKEOFF_HEIGHT = 1.0  # meters
+TAKEOFF_DURATION = 2.0  # seconds
+
+# --- Figure-8 trajectory data ------------------------------------------------
+
+FIGURE8 = [
+    [1.050000, 0.000000, -0.000000, 0.000000, -0.000000, 0.830443, -0.276140, -0.384219, 0.180493, -0.000000, 0.000000, -0.000000, 0.000000, -1.356107, 0.688430, 0.587426, -0.329106, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.710000, 0.396058, 0.918033, 0.128965, -0.773546, 0.339704, 0.034310, -0.026417, -0.030049, -0.445604, -0.684403, 0.888433, 1.493630, -1.361618, -0.139316, 0.158875, 0.095799, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.620000, 0.922409, 0.405715, -0.582968, -0.092188, -0.114670, 0.101046, 0.075834, -0.037926, -0.291165, 0.967514, 0.421451, -1.086348, 0.545211, 0.030109, -0.050046, -0.068177, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.700000, 0.923174, -0.431533, -0.682975, 0.177173, 0.319468, -0.043852, -0.111269, 0.023166, 0.289869, 0.724722, -0.512011, -0.209623, -0.218710, 0.108797, 0.128756, -0.055461, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.560000, 0.405364, -0.834716, 0.158939, 0.288175, -0.373738, -0.054995, 0.036090, 0.078627, 0.450742, -0.385534, -0.954089, 0.128288, 0.442620, 0.055630, -0.060142, -0.076163, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.560000, 0.001062, -0.646270, -0.012560, -0.324065, 0.125327, 0.119738, 0.034567, -0.063130, 0.001593, -1.031457, 0.015159, 0.820816, -0.152665, -0.130729, -0.045679, 0.080444, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.700000, -0.402804, -0.820508, -0.132914, 0.236278, 0.235164, -0.053551, -0.088687, 0.031253, -0.449354, -0.411507, 0.902946, 0.185335, -0.239125, -0.041696, 0.016857, 0.016709, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.620000, -0.921641, -0.464596, 0.661875, 0.286582, -0.228921, -0.051987, 0.004669, 0.038463, -0.292459, 0.777682, 0.565788, -0.432472, -0.060568, -0.082048, -0.009439, 0.041158, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [0.710000, -0.923935, 0.447832, 0.627381, -0.259808, -0.042325, -0.032258, 0.001420, 0.005294, 0.288570, 0.873350, -0.515586, -0.730207, -0.026023, 0.288755, 0.215678, -0.148061, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+    [1.053185, -0.398611, 0.850510, -0.144007, -0.485368, -0.079781, 0.176330, 0.234482, -0.153567, 0.447039, -0.532729, -0.855023, 0.878509, 0.775168, -0.391051, -0.713519, 0.391628, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000],
+]
+
+
+def build_trajectory(raw_data: list[list[float]]) -> list[Poly4D]:
+    """Convert raw coefficient rows into Poly4D trajectory segments."""
+    segments = []
+    for row in raw_data:
+        duration = row[0]
+        x = Poly(row[1:9])
+        y = Poly(row[9:17])
+        z = Poly(row[17:25])
+        yaw = Poly(row[25:33])
+        segments.append(Poly4D(duration, x, y, z, yaw))
+    return segments
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Control Crazyflie swarm using Rust-based cflib"
-    )
-    parser.add_argument(
-        "--config",
-        default="swarm.json",
-        help="Path to swarm configuration JSON file (default: swarm.json)"
-    )
-    parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Disable TOC file caching (caching is enabled by default)"
-    )
-    parser.add_argument(
-        "--ids",
-        nargs="+",
-        type=int,
-        metavar="ID",
-        help="Only use specific drone IDs (e.g., --ids 1 2 3)"
-    )
-    args = parser.parse_args()
+    trajectory = build_trajectory(FIGURE8)
+    total_duration = sum(row[0] for row in FIGURE8)
+    print(f"Trajectory: {len(trajectory)} segments, {total_duration:.1f}s total")
 
-    # Load configuration
-    all_drones = load_swarm_config(args.config)
-
-    # Filter drones if --ids specified
-    if args.ids:
-        drones = [d for d in all_drones if d.id in args.ids]
-        if not drones:
-            print(f"Error: No drones found with IDs: {args.ids}")
-            sys.exit(1)
-    else:
-        drones = all_drones
-
-    print(f"Selected {len(drones)} drone(s):")
-    for drone in drones:
-        print(f"  ID {drone.id:02d}: {drone.platform} - {drone.uri}")
-    print()
-
-    # Set up TOC cache
-    if args.no_cache:
-        cache = NoTocCache()
-    else:
-        cache_dir = str(Path.cwd() / "cache")
-        cache = FileTocCache(cache_dir)
-        print(f"Using TOC cache: {cache.get_cache_dir()}\n")
-
-    # Create swarm controller and run mission
-    swarm = SwarmController(drones, cache)
+    # ---- Connect to both drones ---------------------------------------------
+    print(f"\nConnecting to {len(URIS)} drones...")
+    ctx = LinkContext()
+    cache = FileTocCache("cache")
+    cfs = await asyncio.gather(*[
+        Crazyflie.connect_from_uri(ctx, uri, cache) for uri in URIS
+    ])
+    print("All connected!")
 
     try:
-        await swarm.connect_all()
-        await swarm.setup_logging()
-        await swarm.run_mission()
+        # ---- Read battery voltage -------------------------------------------
+        print("\nReading battery voltage...")
+
+        async def read_vbat(cf):
+            log = cf.log()
+            block = await log.create_block()
+            await block.add_variable("pm.vbat")
+            stream = await block.start(100)
+            data = await stream.next()
+            await stream.stop()
+            return data["data"]["pm.vbat"]
+
+        voltages = await asyncio.gather(*[read_vbat(cf) for cf in cfs])
+        for i, v in enumerate(voltages):
+            print(f"  Drone {i}: {v:.2f}V")
+
+        # ---- Upload trajectory to each drone --------------------------------
+        print("\nUploading trajectory...")
+        async def upload(cf):
+            return await cf.memory().write_trajectory(trajectory)
+
+        bytes_list = await asyncio.gather(*[upload(cf) for cf in cfs])
+        for i, b in enumerate(bytes_list):
+            print(f"  Drone {i}: {b} bytes uploaded")
+
+        # ---- Define trajectory on each drone --------------------------------
+        trajectory_id = 1
+        await asyncio.gather(*[
+            cf.high_level_commander().define_trajectory(trajectory_id, 0, len(trajectory), 0)
+            for cf in cfs
+        ])
+        print("Trajectory defined on all drones")
+
+        # ---- Arm both drones ------------------------------------------------
+        print("\nArming...")
+        await asyncio.gather(*[
+            cf.platform().send_arming_request(True) for cf in cfs
+        ])
+        await asyncio.sleep(1.0)
+        print("Armed!")
+
+        # ---- Take off -------------------------------------------------------
+        print("\nTaking off...")
+        await asyncio.gather(*[
+            cf.high_level_commander().take_off(TAKEOFF_HEIGHT, None, TAKEOFF_DURATION, None)
+            for cf in cfs
+        ])
+        await asyncio.sleep(TAKEOFF_DURATION + 1.0)
+
+        # ---- Fly the trajectory ---------------------------------------------
+        print("Starting trajectory...")
+        await asyncio.gather(*[
+            cf.high_level_commander().start_trajectory(trajectory_id, 1.0, True, False, False, None)
+            for cf in cfs
+        ])
+        await asyncio.sleep(total_duration)
+
+        # ---- Land -----------------------------------------------------------
+        print("Landing...")
+        await asyncio.gather(*[
+            cf.high_level_commander().land(0.0, None, TAKEOFF_DURATION, None)
+            for cf in cfs
+        ])
+        await asyncio.sleep(TAKEOFF_DURATION)
+
+        await asyncio.gather(*[cf.high_level_commander().stop(None) for cf in cfs])
+
     finally:
-        await swarm.disconnect_all()
+        # ---- Disarm ---------------------------------------------------------
+        print("\nDisarming...")
+        await asyncio.gather(*[
+            cf.platform().send_arming_request(False) for cf in cfs
+        ], return_exceptions=True)
+
+        # ---- Disconnect -----------------------------------------------------
+        print("Disconnecting...")
+        await asyncio.gather(*[cf.disconnect() for cf in cfs])
+        print("Done!")
 
 
 if __name__ == "__main__":

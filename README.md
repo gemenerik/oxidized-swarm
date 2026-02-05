@@ -1,78 +1,73 @@
 # oxidized-swarm
 
-Performance stress test for the Rust-based [cflib](https://github.com/bitcraze/crazyflie-lib-python) rewrite. Pushes the Python bindings to their limits by running synchronized multi-drone operations over a single Crazyradio link, testing the power and reliability of the Rust library under real flight conditions.
+Minimal demo that flies two Crazyflie drones through a figure-8 trajectory on a single Crazyradio, using the Rust-based [cflib](https://github.com/bitcraze/crazyflie-lib-python) Python bindings.
 
-## Repository contents
+## What it does
 
-- `main.py` — Swarm controller that connects, arms, flies, and lands all drones concurrently
-- `swarm.json` — Drone definitions (IDs, radio URIs, platform types)
-- `crazyflie-firmware/` — Bitcraze firmware submodule, fixed at release **2025.12.1**
-- `flasher/` — Firmware build & flash utility (see [flasher/README.md](flasher/README.md))
+`main.py` is a single flat script that walks through a complete flight sequence:
+
+1. Connect to both drones
+2. Read battery voltage (`pm.vbat`)
+3. Upload a polynomial trajectory to each drone's memory
+4. Set up a supervisor log block to monitor arming state
+5. Check that both drones can be armed
+6. Arm, take off, fly the figure-8, land, disarm
+7. Disconnect
+
+All steps run concurrently on both drones using `asyncio.gather`. Drones are always disarmed on exit, even if something fails.
 
 ## Setup
 
-Requires Python 3.13+. [uv](https://github.com/astral-sh/uv) is recommended.
+Requires Python 3.10+ and a positioning system (Lighthouse, LPS, etc.).
+
+**With [uv](https://github.com/astral-sh/uv) (recommended):**
 
 ```bash
 uv sync
 ```
 
-## Configuration
+**With pip:**
 
-Drones are defined in `swarm.json`. Each entry specifies an ID, radio URI, and platform type (`cf2`, `cf21bl`, etc.):
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install .
+```
 
-```json
-{
-  "id": 1,
-  "uri": "radio://0/90/2M/ABAD1DEA01",
-  "platform": "cf21bl"
-}
+Then edit the `URIS` list at the top of `main.py` to match your drones:
+
+```python
+URIS = [
+    "radio://0/80/2M/E7E7E7E7E7",
+    "radio://0/80/2M/E7E7E7E702",
+]
 ```
 
 ## Usage
 
-### Run the swarm controller
-
 ```bash
-uv run main.py
+uv run main.py        # with uv
+python main.py        # with pip/venv
 ```
 
-This connects to all drones defined in `swarm.json`, then runs the following mission sequence:
+## Concurrent vs sequential operations
 
-1. Blink LEDs 3 times to confirm connection
-2. Arm all brushless drones
-3. Run a preflight check (waits up to 5 s for all drones to report ready)
-4. Take off to 0.5 m
-5. Land
-6. Disarm all drones
-7. Blink LEDs 2 times to confirm completion
+The library is fully async. This demo runs every step concurrently across all drones with `asyncio.gather`:
 
-Drones are always disarmed on exit, even if the mission fails.
-
-### Options
-
-```
---config PATH    Path to swarm config file (default: swarm.json)
---no-cache       Disable TOC caching (caching is enabled by default)
---ids ID [ID …]  Only control specific drone IDs (e.g. --ids 1 2 3)
+```python
+# Concurrent - all drones execute at the same time
+await asyncio.gather(*[
+    cf.high_level_commander().take_off(1.0, None, 2.0, None)
+    for cf in cfs
+])
 ```
 
-### Examples
+If you prefer sequential execution (e.g. for debugging, or to stagger operations), just use a regular loop:
 
-Run with a subset of drones:
-
-```bash
-uv run main.py --ids 1 2 3
+```python
+# Sequential - one drone at a time
+for cf in cfs:
+    await cf.high_level_commander().take_off(1.0, None, 2.0, None)
 ```
 
-Disable TOC caching (useful for debugging connection issues):
-
-```bash
-uv run main.py --no-cache
-```
-
-## Flashing firmware
-
-The `crazyflie-firmware/` submodule is checked out at release **2025.12.1**. We overwrite `configs/lighthouse_8bs.conf` during the build because our lab section uses base station IDs 5, 6, 7, and 8 instead of the defaults.
-
-See [flasher/README.md](flasher/README.md) for instructions on building and flashing firmware to the drones. The flasher uses the stable PyPI version of cflib since bootloader support is not yet available in the Rust variant.
+Both styles work. The concurrent approach is faster since the Rust library multiplexes all drones over a single radio link.
