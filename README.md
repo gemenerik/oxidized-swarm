@@ -9,16 +9,14 @@ Minimal demo that flies two Crazyflie drones through a figure-8 trajectory on a 
 1. Connect to both drones
 2. Read battery voltage (`pm.vbat`)
 3. Upload a polynomial trajectory to each drone's memory
-4. Set up a supervisor log block to monitor arming state
-5. Check that both drones can be armed
 6. Arm, take off, fly the figure-8, land, disarm
 7. Disconnect
 
-All steps run concurrently on both drones using `asyncio.gather`. Drones are always disarmed on exit, even if something fails.
+All steps run concurrently on both drones using `asyncio.gather`.
 
 ## Setup
 
-Requires Python 3.10+ and a positioning system (Lighthouse, LPS, etc.).
+Requires Python 3.10+ and a positioning system (Lighthouse, LPS, flow deck, etc.).
 
 **With [uv](https://github.com/astral-sh/uv) (recommended):**
 
@@ -62,7 +60,7 @@ await asyncio.gather(*[
 ])
 ```
 
-If you prefer sequential execution (e.g. for debugging, or to stagger operations), just use a regular loop:
+If you prefer sequential execution, just use a regular loop:
 
 ```python
 # Sequential - one drone at a time
